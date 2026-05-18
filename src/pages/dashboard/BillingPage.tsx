@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CreditCard, CheckCircle2, ExternalLink, AlertCircle } from 'lucide-react'
+import { CreditCard, CircleCheck as CheckCircle2, ExternalLink, CircleAlert as AlertCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import type { Subscription } from '../../lib/database.types'

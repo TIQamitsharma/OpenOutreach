@@ -1,8 +1,5 @@
 import { Link } from 'react-router-dom'
-import {
-  Brain, Shield, Zap, BarChart3, MessageSquare, Target,
-  CheckCircle2, ArrowRight, Star, ChevronDown, Menu, X
-} from 'lucide-react'
+import { Brain, Shield, Zap, ChartBar as BarChart3, MessageSquare, Target, CircleCheck as CheckCircle2, ArrowRight, Star, ChevronDown, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 
 const PLANS = [

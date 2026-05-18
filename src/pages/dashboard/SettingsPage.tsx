@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Save, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Save, Eye, EyeOff, CircleCheck as CheckCircle2, CircleAlert as AlertCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import type { UserConfig } from '../../lib/database.types'

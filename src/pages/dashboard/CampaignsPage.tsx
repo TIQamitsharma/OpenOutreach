@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Megaphone, Edit2, Trash2, ToggleLeft, ToggleRight, ArrowRight } from 'lucide-react'
+import { Plus, Megaphone, CreditCard as Edit2, Trash2, ToggleLeft, ToggleRight, ArrowRight } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import type { Campaign } from '../../lib/database.types'

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, Play, Pause, AlertCircle, CheckCircle2, Clock, Zap, RefreshCw } from 'lucide-react'
+import { Activity, Play, Pause, CircleAlert as AlertCircle, CircleCheck as CheckCircle2, Clock, Zap, RefreshCw } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import type { DaemonStatus, Task } from '../../lib/database.types'

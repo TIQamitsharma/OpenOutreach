@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Users, Megaphone, Activity, TrendingUp, RefreshCw, AlertCircle } from 'lucide-react'
+import { Users, Megaphone, Activity, TrendingUp, RefreshCw, CircleAlert as AlertCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 interface PlatformStats {

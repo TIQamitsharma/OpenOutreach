@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Users, Link2, MessageSquare, TrendingUp, Activity, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Users, Link2, MessageSquare, TrendingUp, Activity, ArrowRight, CircleAlert as AlertCircle, CircleCheck as CheckCircle2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import type { DaemonStatus } from '../../lib/database.types'

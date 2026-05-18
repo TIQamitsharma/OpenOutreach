@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Zap, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
+import { Zap, Eye, EyeOff, CircleCheck as CheckCircle2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 export default function SignupPage() {

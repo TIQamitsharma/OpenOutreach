@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Save, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { Save, CircleCheck as CheckCircle2, CircleAlert as AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 interface PlanLimit {
