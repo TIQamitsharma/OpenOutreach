@@ -1,6 +1,7 @@
 # linkedin/django_settings.py
 """
 Minimal Django settings for using DjangoCRM's ORM + admin.
+Supports both SQLite (local dev) and PostgreSQL (production SaaS).
 """
 import os
 import sys
@@ -14,11 +15,11 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 
 BASE_DIR = ROOT_DIR
 
-SECRET_KEY = "openoutreach-local-dev-key-change-in-production"
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "openoutreach-local-dev-key-change-in-production")
 
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() == "true"
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
 
 INSTALLED_APPS = [
     "django.contrib.sites",
@@ -62,12 +63,34 @@ TEMPLATES = [
     },
 ]
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": str(ROOT_DIR / "data" / "db.sqlite3"),
+# Database — use PostgreSQL in production (set DATABASE_URL env var)
+# Falls back to SQLite for local dev / single-user mode.
+_DATABASE_URL = os.environ.get("DATABASE_URL", "")
+if _DATABASE_URL:
+    import urllib.parse as _urlparse
+    _u = _urlparse.urlparse(_DATABASE_URL)
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": _u.path.lstrip("/"),
+            "USER": _u.username,
+            "PASSWORD": _u.password,
+            "HOST": _u.hostname,
+            "PORT": str(_u.port or 5432),
+            "OPTIONS": {"sslmode": os.environ.get("DB_SSLMODE", "require")},
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": str(ROOT_DIR / "data" / "db.sqlite3"),
+        }
+    }
+
+# Multi-tenant: each daemon worker is scoped to one user identified by TENANT_USER_ID.
+# The daemon reads this env var to scope all DB queries to the correct user.
+TENANT_USER_ID = os.environ.get("TENANT_USER_ID", "")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
