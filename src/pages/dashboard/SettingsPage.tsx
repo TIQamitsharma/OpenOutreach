@@ -54,7 +54,7 @@ export default function SettingsPage() {
         if (e) throw e
         await refreshProfile()
       } else {
-        const { error: e } = await supabase.from('user_configs').upsert({ ...config, user_id: user.id })
+        const { error: e } = await supabase.from('user_configs').upsert({ ...config, user_id: user.id }, { onConflict: 'user_id' })
         if (e) throw e
       }
       setSaved(true)

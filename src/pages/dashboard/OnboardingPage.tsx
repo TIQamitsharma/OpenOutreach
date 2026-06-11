@@ -54,7 +54,7 @@ export default function OnboardingPage() {
         connect_daily_limit: connectDaily,
         connect_weekly_limit: connectWeekly,
         follow_up_daily_limit: followUpDaily,
-      })
+      }, { onConflict: 'user_id' })
       if (upsertErr) throw upsertErr
 
       await supabase.from('user_profiles').update({

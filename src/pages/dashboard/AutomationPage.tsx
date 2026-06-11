@@ -35,12 +35,10 @@ export default function AutomationPage() {
   async function requestStart() {
     if (!user) return
     setActionLoading(true)
-    const { data: existing } = await supabase.from('daemon_status').select('id').eq('user_id', user.id).maybeSingle()
-    if (existing) {
-      await supabase.from('daemon_status').update({ status: 'starting', updated_at: new Date().toISOString() }).eq('user_id', user.id)
-    } else {
-      await supabase.from('daemon_status').insert({ user_id: user.id, status: 'starting' })
-    }
+    await supabase.from('daemon_status').upsert(
+      { user_id: user.id, status: 'starting', updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' }
+    )
     await loadData()
     setActionLoading(false)
   }

@@ -45,7 +45,6 @@ export default function BillingPage() {
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [loading, setLoading] = useState(true)
   const [subscribing, setSubscribing] = useState<string | null>(null)
-  void loading
 
   useEffect(() => { if (user) loadData() }, [user])
 
