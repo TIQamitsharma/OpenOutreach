@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Save, Eye, EyeOff, CircleCheck as CheckCircle2, CircleAlert as AlertCircle } from 'lucide-react'
+import { Save, Eye, EyeOff, CircleCheck as CheckCircle2, CircleAlert as AlertCircle, KeyRound } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import type { UserConfig } from '../../lib/database.types'
@@ -7,9 +7,11 @@ import type { UserConfig } from '../../lib/database.types'
 const PROVIDERS = ['openai', 'anthropic', 'google', 'groq', 'mistral', 'cohere', 'openai_compatible']
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
+type ConfigPayload = Omit<Partial<UserConfig>, 'id' | 'created_at' | 'updated_at'>
+
 export default function SettingsPage() {
   const { user, profile, refreshProfile } = useAuth()
-  const [config, setConfig] = useState<Partial<UserConfig>>({
+  const [config, setConfig] = useState<ConfigPayload>({
     llm_provider: 'openai',
     llm_api_key: '',
     llm_api_base: '',
@@ -33,13 +35,21 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<'account' | 'linkedin' | 'llm' | 'limits'>('account')
 
   const [fullName, setFullName] = useState(profile?.full_name || '')
+  const [newPassword, setNewPassword] = useState('')
+  const [showNewPw, setShowNewPw] = useState(false)
+  const [pwSaved, setPwSaved] = useState(false)
+  const [pwError, setPwError] = useState('')
+  const [pwSaving, setPwSaving] = useState(false)
 
   useEffect(() => { if (user) loadConfig() }, [user])
   useEffect(() => { setFullName(profile?.full_name || '') }, [profile])
 
   async function loadConfig() {
     const { data } = await supabase.from('user_configs').select('*').eq('user_id', user!.id).maybeSingle()
-    if (data) setConfig(data)
+    if (data) {
+      const { id: _id, created_at: _c, updated_at: _u, ...rest } = data as UserConfig & { id: string; created_at: string; updated_at: string }
+      setConfig(rest)
+    }
   }
 
   async function handleSave() {
@@ -54,7 +64,10 @@ export default function SettingsPage() {
         if (e) throw e
         await refreshProfile()
       } else {
-        const { error: e } = await supabase.from('user_configs').upsert({ ...config, user_id: user.id }, { onConflict: 'user_id' })
+        const { error: e } = await supabase.from('user_configs').upsert(
+          { ...config, user_id: user.id },
+          { onConflict: 'user_id' }
+        )
         if (e) throw e
       }
       setSaved(true)
@@ -63,6 +76,25 @@ export default function SettingsPage() {
       setError(e instanceof Error ? e.message : 'Save failed')
     }
     setSaving(false)
+  }
+
+  async function handleChangePassword() {
+    if (!newPassword || newPassword.length < 8) {
+      setPwError('Password must be at least 8 characters')
+      return
+    }
+    setPwSaving(true)
+    setPwError('')
+    setPwSaved(false)
+    const { error: e } = await supabase.auth.updateUser({ password: newPassword })
+    if (e) {
+      setPwError(e.message)
+    } else {
+      setPwSaved(true)
+      setNewPassword('')
+      setTimeout(() => setPwSaved(false), 3000)
+    }
+    setPwSaving(false)
   }
 
   function toggleRestDay(day: number) {
@@ -122,13 +154,42 @@ export default function SettingsPage() {
                   </span>
                 </div>
               </div>
+
+              <button className="btn-primary text-sm" disabled={saving} onClick={handleSave}>
+                <Save className="w-4 h-4" />
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+
+              <div className="border-t border-gray-100 pt-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <KeyRound className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium text-gray-900 text-sm">Change Password</span>
+                </div>
+                {pwError && <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{pwError}</div>}
+                {pwSaved && <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" />Password updated successfully</div>}
+                <div className="relative mb-3">
+                  <input
+                    className="input pr-10"
+                    type={showNewPw ? 'text' : 'password'}
+                    placeholder="New password (min. 8 characters)"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                  />
+                  <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" onClick={() => setShowNewPw(!showNewPw)}>
+                    {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <button className="btn-secondary text-sm" disabled={pwSaving || !newPassword} onClick={handleChangePassword}>
+                  {pwSaving ? 'Updating…' : 'Update Password'}
+                </button>
+              </div>
             </>
           )}
 
           {tab === 'linkedin' && (
             <>
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                Your LinkedIn credentials are stored encrypted. They are only used by the automation daemon running on the server.
+                Your LinkedIn credentials are stored securely and are only used by the automation daemon running on the server.
               </div>
               <div>
                 <label className="label">LinkedIn Email</label>
@@ -149,6 +210,10 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </div>
+              <button className="btn-primary text-sm" disabled={saving} onClick={handleSave}>
+                <Save className="w-4 h-4" />
+                {saving ? 'Saving…' : 'Save LinkedIn Credentials'}
+              </button>
             </>
           )}
 
@@ -185,6 +250,10 @@ export default function SettingsPage() {
                 <label className="label">Model Name</label>
                 <input className="input" placeholder="e.g. gpt-4o-mini" value={config.ai_model || ''} onChange={e => setConfig({ ...config, ai_model: e.target.value })} />
               </div>
+              <button className="btn-primary text-sm" disabled={saving} onClick={handleSave}>
+                <Save className="w-4 h-4" />
+                {saving ? 'Saving…' : 'Save LLM Settings'}
+              </button>
             </>
           )}
 
@@ -253,13 +322,13 @@ export default function SettingsPage() {
                   </div>
                 )}
               </div>
+
+              <button className="btn-primary text-sm" disabled={saving} onClick={handleSave}>
+                <Save className="w-4 h-4" />
+                {saving ? 'Saving…' : 'Save Rate Limits'}
+              </button>
             </>
           )}
-
-          <button className="btn-primary text-sm" disabled={saving} onClick={handleSave}>
-            <Save className="w-4 h-4" />
-            {saving ? 'Saving…' : 'Save Settings'}
-          </button>
         </div>
       </div>
     </div>
