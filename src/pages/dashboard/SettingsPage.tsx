@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Save, Eye, EyeOff, CircleCheck as CheckCircle2, CircleAlert as AlertCircle, KeyRound } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
@@ -7,26 +7,50 @@ import type { UserConfig } from '../../lib/database.types'
 const PROVIDERS = ['openai', 'anthropic', 'google', 'groq', 'mistral', 'cohere', 'openai_compatible']
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-type ConfigPayload = Omit<Partial<UserConfig>, 'id' | 'created_at' | 'updated_at'>
+function extractError(e: unknown): string {
+  if (!e) return 'Unknown error'
+  if (typeof e === 'object' && 'message' in e) return (e as { message: string }).message
+  if (typeof e === 'string') return e
+  return 'Save failed'
+}
+
+interface ConfigState {
+  llm_provider: string
+  llm_api_key: string
+  llm_api_base: string
+  ai_model: string
+  linkedin_username: string
+  linkedin_password_enc: string
+  connect_daily_limit: number
+  connect_weekly_limit: number
+  follow_up_daily_limit: number
+  active_hours_enabled: boolean
+  active_start_hour: number
+  active_end_hour: number
+  active_timezone: string
+  rest_days: number[]
+}
+
+const DEFAULT_CONFIG: ConfigState = {
+  llm_provider: 'openai',
+  llm_api_key: '',
+  llm_api_base: '',
+  ai_model: '',
+  linkedin_username: '',
+  linkedin_password_enc: '',
+  connect_daily_limit: 20,
+  connect_weekly_limit: 100,
+  follow_up_daily_limit: 25,
+  active_hours_enabled: false,
+  active_start_hour: 9,
+  active_end_hour: 19,
+  active_timezone: 'UTC',
+  rest_days: [5, 6],
+}
 
 export default function SettingsPage() {
   const { user, profile, refreshProfile } = useAuth()
-  const [config, setConfig] = useState<ConfigPayload>({
-    llm_provider: 'openai',
-    llm_api_key: '',
-    llm_api_base: '',
-    ai_model: '',
-    linkedin_username: '',
-    linkedin_password_enc: '',
-    connect_daily_limit: 20,
-    connect_weekly_limit: 100,
-    follow_up_daily_limit: 25,
-    active_hours_enabled: false,
-    active_start_hour: 9,
-    active_end_hour: 19,
-    active_timezone: 'UTC',
-    rest_days: [5, 6],
-  })
+  const [config, setConfig] = useState<ConfigState>(DEFAULT_CONFIG)
   const [showPw, setShowPw] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -41,15 +65,74 @@ export default function SettingsPage() {
   const [pwError, setPwError] = useState('')
   const [pwSaving, setPwSaving] = useState(false)
 
+  const configLoadedRef = useRef(false)
+
   useEffect(() => { if (user) loadConfig() }, [user])
   useEffect(() => { setFullName(profile?.full_name || '') }, [profile])
 
   async function loadConfig() {
-    const { data } = await supabase.from('user_configs').select('*').eq('user_id', user!.id).maybeSingle()
-    if (data) {
-      const { id: _id, created_at: _c, updated_at: _u, ...rest } = data as UserConfig & { id: string; created_at: string; updated_at: string }
-      setConfig(rest)
+    const { data, error: loadErr } = await supabase
+      .from('user_configs')
+      .select('*')
+      .eq('user_id', user!.id)
+      .maybeSingle()
+
+    if (loadErr) {
+      console.error('[Settings] loadConfig error:', loadErr)
+      return
     }
+
+    if (data) {
+      const row = data as UserConfig
+      configLoadedRef.current = true
+      setConfig({
+        llm_provider: row.llm_provider || 'openai',
+        llm_api_key: row.llm_api_key || '',
+        llm_api_base: row.llm_api_base || '',
+        ai_model: row.ai_model || '',
+        linkedin_username: row.linkedin_username || '',
+        linkedin_password_enc: row.linkedin_password_enc || '',
+        connect_daily_limit: row.connect_daily_limit ?? 20,
+        connect_weekly_limit: row.connect_weekly_limit ?? 100,
+        follow_up_daily_limit: row.follow_up_daily_limit ?? 25,
+        active_hours_enabled: row.active_hours_enabled ?? false,
+        active_start_hour: row.active_start_hour ?? 9,
+        active_end_hour: row.active_end_hour ?? 19,
+        active_timezone: row.active_timezone || 'UTC',
+        rest_days: Array.isArray(row.rest_days) ? row.rest_days : [5, 6],
+      })
+    }
+  }
+
+  async function saveConfig(partial: Partial<ConfigState>) {
+    const merged: ConfigState = { ...config, ...partial }
+
+    // Validate limits stay within DB check constraints
+    const daily = Math.max(1, Math.min(50, merged.connect_daily_limit || 20))
+    const weekly = Math.max(1, Math.min(300, merged.connect_weekly_limit || 100))
+    const followup = Math.max(1, Math.min(100, merged.follow_up_daily_limit || 25))
+
+    const { error: rpcErr } = await supabase.rpc('upsert_user_config', {
+      p_llm_provider: merged.llm_provider || 'openai',
+      p_llm_api_key: merged.llm_api_key || '',
+      p_llm_api_base: merged.llm_api_base || '',
+      p_ai_model: merged.ai_model || '',
+      p_linkedin_username: merged.linkedin_username || '',
+      p_linkedin_password_enc: merged.linkedin_password_enc || '',
+      p_connect_daily_limit: daily,
+      p_connect_weekly_limit: weekly,
+      p_follow_up_daily_limit: followup,
+      p_active_hours_enabled: merged.active_hours_enabled ?? false,
+      p_active_start_hour: Math.max(0, Math.min(23, merged.active_start_hour ?? 9)),
+      p_active_end_hour: Math.max(0, Math.min(23, merged.active_end_hour ?? 19)),
+      p_active_timezone: merged.active_timezone || 'UTC',
+      p_rest_days: Array.isArray(merged.rest_days) ? merged.rest_days : [5, 6],
+    })
+
+    if (rpcErr) throw rpcErr
+    configLoadedRef.current = true
+    // Reload to confirm persisted values
+    await loadConfig()
   }
 
   async function handleSave() {
@@ -60,20 +143,20 @@ export default function SettingsPage() {
 
     try {
       if (tab === 'account') {
-        const { error: e } = await supabase.from('user_profiles').update({ full_name: fullName }).eq('id', user.id)
+        const { error: e } = await supabase
+          .from('user_profiles')
+          .update({ full_name: fullName })
+          .eq('id', user.id)
         if (e) throw e
         await refreshProfile()
       } else {
-        const { error: e } = await supabase.from('user_configs').upsert(
-          { ...config, user_id: user.id },
-          { onConflict: 'user_id' }
-        )
-        if (e) throw e
+        await saveConfig(config)
       }
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Save failed')
+      console.error('[Settings] save error:', e)
+      setError(extractError(e))
     }
     setSaving(false)
   }
@@ -123,7 +206,7 @@ export default function SettingsPage() {
             <button
               key={t.id}
               className={`px-5 py-3 text-sm font-medium transition-colors ${tab === t.id ? 'text-brand-600 bg-white border-b-2 border-brand-600' : 'text-gray-600 hover:text-gray-900'}`}
-              onClick={() => setTab(t.id)}
+              onClick={() => { setTab(t.id); setError(''); setSaved(false) }}
             >
               {t.label}
             </button>
@@ -131,8 +214,18 @@ export default function SettingsPage() {
         </div>
 
         <div className="p-6 space-y-5">
-          {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2"><AlertCircle className="w-4 h-4" />{error}</div>}
-          {saved && <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" />Settings saved successfully</div>}
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+          {saved && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              Settings saved successfully
+            </div>
+          )}
 
           {tab === 'account' && (
             <>
@@ -154,7 +247,6 @@ export default function SettingsPage() {
                   </span>
                 </div>
               </div>
-
               <button className="btn-primary text-sm" disabled={saving} onClick={handleSave}>
                 <Save className="w-4 h-4" />
                 {saving ? 'Saving…' : 'Save Changes'}
@@ -166,7 +258,11 @@ export default function SettingsPage() {
                   <span className="font-medium text-gray-900 text-sm">Change Password</span>
                 </div>
                 {pwError && <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{pwError}</div>}
-                {pwSaved && <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" />Password updated successfully</div>}
+                {pwSaved && (
+                  <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4" />Password updated successfully
+                  </div>
+                )}
                 <div className="relative mb-3">
                   <input
                     className="input pr-10"
@@ -193,7 +289,13 @@ export default function SettingsPage() {
               </div>
               <div>
                 <label className="label">LinkedIn Email</label>
-                <input className="input" type="email" placeholder="your@email.com" value={config.linkedin_username || ''} onChange={e => setConfig({ ...config, linkedin_username: e.target.value })} />
+                <input
+                  className="input"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={config.linkedin_username}
+                  onChange={e => setConfig({ ...config, linkedin_username: e.target.value })}
+                />
               </div>
               <div>
                 <label className="label">LinkedIn Password</label>
@@ -202,7 +304,7 @@ export default function SettingsPage() {
                     className="input pr-10"
                     type={showPw ? 'text' : 'password'}
                     placeholder="••••••••"
-                    value={config.linkedin_password_enc || ''}
+                    value={config.linkedin_password_enc}
                     onChange={e => setConfig({ ...config, linkedin_password_enc: e.target.value })}
                   />
                   <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" onClick={() => setShowPw(!showPw)}>
@@ -221,7 +323,11 @@ export default function SettingsPage() {
             <>
               <div>
                 <label className="label">LLM Provider</label>
-                <select className="input" value={config.llm_provider || 'openai'} onChange={e => setConfig({ ...config, llm_provider: e.target.value })}>
+                <select
+                  className="input"
+                  value={config.llm_provider}
+                  onChange={e => setConfig({ ...config, llm_provider: e.target.value })}
+                >
                   {PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
@@ -232,7 +338,7 @@ export default function SettingsPage() {
                     className="input pr-10"
                     type={showApiKey ? 'text' : 'password'}
                     placeholder="sk-..."
-                    value={config.llm_api_key || ''}
+                    value={config.llm_api_key}
                     onChange={e => setConfig({ ...config, llm_api_key: e.target.value })}
                   />
                   <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" onClick={() => setShowApiKey(!showApiKey)}>
@@ -243,12 +349,23 @@ export default function SettingsPage() {
               {config.llm_provider === 'openai_compatible' && (
                 <div>
                   <label className="label">API Base URL</label>
-                  <input className="input" type="url" placeholder="https://api.example.com/v1" value={config.llm_api_base || ''} onChange={e => setConfig({ ...config, llm_api_base: e.target.value })} />
+                  <input
+                    className="input"
+                    type="url"
+                    placeholder="https://api.example.com/v1"
+                    value={config.llm_api_base}
+                    onChange={e => setConfig({ ...config, llm_api_base: e.target.value })}
+                  />
                 </div>
               )}
               <div>
                 <label className="label">Model Name</label>
-                <input className="input" placeholder="e.g. gpt-4o-mini" value={config.ai_model || ''} onChange={e => setConfig({ ...config, ai_model: e.target.value })} />
+                <input
+                  className="input"
+                  placeholder="e.g. gpt-4o-mini"
+                  value={config.ai_model}
+                  onChange={e => setConfig({ ...config, ai_model: e.target.value })}
+                />
               </div>
               <button className="btn-primary text-sm" disabled={saving} onClick={handleSave}>
                 <Save className="w-4 h-4" />
@@ -261,16 +378,37 @@ export default function SettingsPage() {
             <>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="label">Connect/Day</label>
-                  <input className="input" type="number" min={1} max={50} value={config.connect_daily_limit || 20} onChange={e => setConfig({ ...config, connect_daily_limit: +e.target.value })} />
+                  <label className="label">Connect/Day <span className="text-gray-400 font-normal">(1–50)</span></label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={config.connect_daily_limit}
+                    onChange={e => setConfig({ ...config, connect_daily_limit: Math.max(1, Math.min(50, +e.target.value || 1)) })}
+                  />
                 </div>
                 <div>
-                  <label className="label">Connect/Week</label>
-                  <input className="input" type="number" min={1} max={300} value={config.connect_weekly_limit || 100} onChange={e => setConfig({ ...config, connect_weekly_limit: +e.target.value })} />
+                  <label className="label">Connect/Week <span className="text-gray-400 font-normal">(1–300)</span></label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={300}
+                    value={config.connect_weekly_limit}
+                    onChange={e => setConfig({ ...config, connect_weekly_limit: Math.max(1, Math.min(300, +e.target.value || 1)) })}
+                  />
                 </div>
                 <div>
-                  <label className="label">Follow-ups/Day</label>
-                  <input className="input" type="number" min={1} max={100} value={config.follow_up_daily_limit || 25} onChange={e => setConfig({ ...config, follow_up_daily_limit: +e.target.value })} />
+                  <label className="label">Follow-ups/Day <span className="text-gray-400 font-normal">(1–100)</span></label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={config.follow_up_daily_limit}
+                    onChange={e => setConfig({ ...config, follow_up_daily_limit: Math.max(1, Math.min(100, +e.target.value || 1)) })}
+                  />
                 </div>
               </div>
 
@@ -281,6 +419,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-gray-500">Only run automation during business hours</p>
                   </div>
                   <button
+                    type="button"
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${config.active_hours_enabled ? 'bg-brand-600' : 'bg-gray-200'}`}
                     onClick={() => setConfig({ ...config, active_hours_enabled: !config.active_hours_enabled })}
                   >
@@ -292,17 +431,36 @@ export default function SettingsPage() {
                   <div className="space-y-4 pl-4 border-l-2 border-brand-100">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="label text-xs">Start Hour</label>
-                        <input className="input text-sm" type="number" min={0} max={23} value={config.active_start_hour || 9} onChange={e => setConfig({ ...config, active_start_hour: +e.target.value })} />
+                        <label className="label text-xs">Start Hour (0–23)</label>
+                        <input
+                          className="input text-sm"
+                          type="number"
+                          min={0}
+                          max={23}
+                          value={config.active_start_hour}
+                          onChange={e => setConfig({ ...config, active_start_hour: Math.max(0, Math.min(23, +e.target.value)) })}
+                        />
                       </div>
                       <div>
-                        <label className="label text-xs">End Hour</label>
-                        <input className="input text-sm" type="number" min={0} max={23} value={config.active_end_hour || 19} onChange={e => setConfig({ ...config, active_end_hour: +e.target.value })} />
+                        <label className="label text-xs">End Hour (0–23)</label>
+                        <input
+                          className="input text-sm"
+                          type="number"
+                          min={0}
+                          max={23}
+                          value={config.active_end_hour}
+                          onChange={e => setConfig({ ...config, active_end_hour: Math.max(0, Math.min(23, +e.target.value)) })}
+                        />
                       </div>
                     </div>
                     <div>
                       <label className="label text-xs">Timezone</label>
-                      <input className="input text-sm" placeholder="UTC" value={config.active_timezone || 'UTC'} onChange={e => setConfig({ ...config, active_timezone: e.target.value })} />
+                      <input
+                        className="input text-sm"
+                        placeholder="UTC"
+                        value={config.active_timezone}
+                        onChange={e => setConfig({ ...config, active_timezone: e.target.value })}
+                      />
                     </div>
                     <div>
                       <label className="label text-xs">Rest Days</label>
@@ -310,9 +468,9 @@ export default function SettingsPage() {
                         {DAYS.map((day, i) => (
                           <button
                             key={day}
-                            className={`w-9 h-9 rounded-lg text-xs font-medium border transition-colors ${(config.rest_days || []).includes(i) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300'}`}
-                            onClick={() => toggleRestDay(i)}
                             type="button"
+                            className={`w-9 h-9 rounded-lg text-xs font-medium border transition-colors ${config.rest_days.includes(i) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300'}`}
+                            onClick={() => toggleRestDay(i)}
                           >
                             {day}
                           </button>

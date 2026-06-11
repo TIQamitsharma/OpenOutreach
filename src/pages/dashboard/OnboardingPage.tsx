@@ -43,18 +43,22 @@ export default function OnboardingPage() {
     setSaving(true)
     setError('')
     try {
-      const { error: upsertErr } = await supabase.from('user_configs').upsert({
-        user_id: user.id,
-        linkedin_username: linkedinUsername,
-        linkedin_password_enc: linkedinPassword,
-        llm_provider: llmProvider,
-        llm_api_key: llmApiKey,
-        llm_api_base: llmApiBase,
-        ai_model: aiModel,
-        connect_daily_limit: connectDaily,
-        connect_weekly_limit: connectWeekly,
-        follow_up_daily_limit: followUpDaily,
-      }, { onConflict: 'user_id' })
+      const { error: upsertErr } = await supabase.rpc('upsert_user_config', {
+        p_llm_provider: llmProvider,
+        p_llm_api_key: llmApiKey,
+        p_llm_api_base: llmApiBase,
+        p_ai_model: aiModel,
+        p_linkedin_username: linkedinUsername,
+        p_linkedin_password_enc: linkedinPassword,
+        p_connect_daily_limit: Math.max(1, Math.min(50, connectDaily)),
+        p_connect_weekly_limit: Math.max(1, Math.min(300, connectWeekly)),
+        p_follow_up_daily_limit: Math.max(1, Math.min(100, followUpDaily)),
+        p_active_hours_enabled: false,
+        p_active_start_hour: 9,
+        p_active_end_hour: 19,
+        p_active_timezone: 'UTC',
+        p_rest_days: [5, 6],
+      })
       if (upsertErr) throw upsertErr
 
       await supabase.from('user_profiles').update({
@@ -66,7 +70,8 @@ export default function OnboardingPage() {
       await refreshProfile()
       setStep(3)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'An error occurred')
+      const msg = (e && typeof e === 'object' && 'message' in e) ? (e as { message: string }).message : 'An error occurred'
+      setError(msg)
     }
     setSaving(false)
   }
